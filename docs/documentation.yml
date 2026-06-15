@@ -1,0 +1,941 @@
+openapi: 3.0.0
+info:
+  title: CarMarket API
+  version: 1.0.0
+  description: Backend API for a car marketplace. Users can register, browse car brands, and view/manage car listings.
+servers:
+  - url: http://localhost:4001
+    description: Development server
+
+tags:
+  - name: Authentication
+    description: Registration, login, and token management
+  - name: Brands
+    description: Car brand (category) management
+  - name: Cars
+    description: Car listing management
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Brand:
+      type: object
+      properties:
+        _id:
+          type: string
+          example: "665f1c2e1234567890abcdef"
+        name:
+          type: string
+          example: "CHEVROLET"
+        image:
+          type: string
+          example: "http://localhost:4001/uploads/1718000000000-logo.png"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Car:
+      type: object
+      properties:
+        _id:
+          type: string
+          example: "665f1c2e1234567890abcdef"
+        brand:
+          oneOf:
+            - type: string
+            - $ref: '#/components/schemas/Brand'
+          description: Brand ObjectId or populated brand object
+        name:
+          type: string
+          example: "LACETTI"
+        registration:
+          type: string
+          enum: ["No", "Yes"]
+          example: "Yes"
+        engine:
+          type: number
+          example: 1.6
+        year:
+          type: integer
+          example: 2018
+        color:
+          type: string
+          example: "White"
+        mileage:
+          type: integer
+          example: 45000
+        gearbox:
+          type: string
+          enum: ["Automatic", "Manual", "CVT", "Semi-automatic"]
+          example: "Automatic"
+        price:
+          type: number
+          example: 12500
+        description:
+          type: string
+          example: "Well maintained, single owner vehicle"
+        exterior_image:
+          type: string
+          example: "http://localhost:4001/uploads/1718000000000-exterior.jpg"
+        interior_image:
+          type: string
+          example: "http://localhost:4001/uploads/1718000000000-interior.jpg"
+        thumbnail:
+          type: string
+          example: "http://localhost:4001/uploads/1718000000000-thumbnail.jpg"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Pagination:
+      type: object
+      properties:
+        total:
+          type: integer
+          example: 42
+        page:
+          type: integer
+          example: 1
+        limit:
+          type: integer
+          example: 6
+        totalPages:
+          type: integer
+          example: 7
+
+    Error:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        message:
+          type: string
+          example: "Something went wrong"
+
+    ValidationError:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        message:
+          type: string
+          example: "Validation error"
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+                example: "price"
+              message:
+                type: string
+                example: "Price is required"
+
+paths:
+  # ==================== AUTH ====================
+  /auth/register:
+    post:
+      tags:
+        - Authentication
+      summary: Register a new user
+      description: Creates a new user account and sends an OTP verification code to the provided email.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - username
+                - email
+                - password
+              properties:
+                username:
+                  type: string
+                  example: "johndoe"
+                email:
+                  type: string
+                  example: "john.doe@gmail.com"
+                password:
+                  type: string
+                  example: "password123"
+      responses:
+        '201':
+          description: User registered successfully, verification code sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Registration successful. A verification code has been sent to your email."
+        '400':
+          description: Email or username already taken, or validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/verify:
+    post:
+      tags:
+        - Authentication
+      summary: Verify email with OTP code
+      description: Verifies the 6-digit OTP code sent during registration.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - otp
+              properties:
+                email:
+                  type: string
+                  example: "john.doe@gmail.com"
+                otp:
+                  type: string
+                  example: "123456"
+      responses:
+        '200':
+          description: Email verified successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Email verified successfully. You can now log in."
+        '400':
+          description: Invalid or expired OTP code
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: Login
+      description: Logs in a user with email and password. On success, sets accessToken and refreshToken cookies.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+              properties:
+                email:
+                  type: string
+                  example: "john.doe@gmail.com"
+                password:
+                  type: string
+                  example: "password123"
+      responses:
+        '200':
+          description: Logged in successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Logged in successfully"
+                  accessToken:
+                    type: string
+                  user:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      username:
+                        type: string
+                      email:
+                        type: string
+                      role:
+                        type: string
+                        example: "user"
+        '400':
+          description: Invalid email or password
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/refresh:
+    get:
+      tags:
+        - Authentication
+      summary: Refresh tokens
+      description: Issues a new accessToken and refreshToken using the refreshToken cookie.
+      responses:
+        '200':
+          description: Tokens refreshed successfully
+        '400':
+          description: Token not found or invalid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/logout:
+    post:
+      tags:
+        - Authentication
+      summary: Logout
+      description: Clears the accessToken and refreshToken cookies.
+      responses:
+        '200':
+          description: Logged out successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Logged out successfully"
+
+  # ==================== BRANDS ====================
+  /brands:
+    get:
+      tags:
+        - Brands
+      summary: Get all brands
+      responses:
+        '200':
+          description: List of brands
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Brand'
+
+    post:
+      tags:
+        - Brands
+      summary: Create a new brand (admin only)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - name
+                - image
+              properties:
+                name:
+                  type: string
+                  example: "Chevrolet"
+                  description: "Automatically converted to uppercase"
+                image:
+                  type: string
+                  format: binary
+                  description: Brand logo/image
+      responses:
+        '201':
+          description: Brand created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Brand created successfully"
+                  data:
+                    $ref: '#/components/schemas/Brand'
+        '400':
+          description: Validation error, missing image, or brand already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+        '401':
+          description: Token missing or invalid
+        '403':
+          description: Admin role required
+
+  /brands/{id}:
+    get:
+      tags:
+        - Brands
+      summary: Get a single brand
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Brand details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/Brand'
+        '404':
+          description: Brand not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    put:
+      tags:
+        - Brands
+      summary: Update a brand (admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  example: "Lada"
+                image:
+                  type: string
+                  format: binary
+                  description: New image (optional)
+      responses:
+        '200':
+          description: Brand updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Brand updated successfully"
+        '404':
+          description: Brand not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Token missing or invalid
+        '403':
+          description: Admin role required
+
+    delete:
+      tags:
+        - Brands
+      summary: Delete a brand (admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Brand deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Brand deleted successfully"
+        '404':
+          description: Brand not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Token missing or invalid
+        '403':
+          description: Admin role required
+
+  # ==================== CARS ====================
+  /cars:
+    get:
+      tags:
+        - Cars
+      summary: Get all cars (with pagination)
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+          description: Page number
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 6
+          description: Number of items per page
+      responses:
+        '200':
+          description: List of cars
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Car'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+
+    post:
+      tags:
+        - Cars
+      summary: Create a new car listing (admin only)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - brand
+                - name
+                - engine
+                - year
+                - color
+                - mileage
+                - gearbox
+                - price
+                - description
+                - exterior_image
+                - interior_image
+                - thumbnail
+              properties:
+                brand:
+                  type: string
+                  description: Brand ObjectId
+                  example: "665f1c2e1234567890abcdef"
+                name:
+                  type: string
+                  example: "Lacetti"
+                registration:
+                  type: string
+                  enum: ["No", "Yes"]
+                  example: "Yes"
+                engine:
+                  type: number
+                  minimum: 0.5
+                  maximum: 10
+                  example: 1.6
+                year:
+                  type: integer
+                  minimum: 1990
+                  example: 2018
+                color:
+                  type: string
+                  example: "White"
+                mileage:
+                  type: integer
+                  minimum: 0
+                  example: 45000
+                gearbox:
+                  type: string
+                  enum: ["Automatic", "Manual", "CVT", "Semi-automatic"]
+                  example: "Automatic"
+                price:
+                  type: number
+                  minimum: 0
+                  example: 12500
+                description:
+                  type: string
+                  minLength: 10
+                  example: "Well maintained, single owner vehicle"
+                exterior_image:
+                  type: string
+                  format: binary
+                  description: 360° exterior image
+                interior_image:
+                  type: string
+                  format: binary
+                  description: 360° interior image
+                thumbnail:
+                  type: string
+                  format: binary
+                  description: Car thumbnail image
+      responses:
+        '201':
+          description: Car created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Car created successfully"
+                  data:
+                    $ref: '#/components/schemas/Car'
+        '400':
+          description: Validation error or missing images
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+        '404':
+          description: Brand not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Token missing or invalid
+        '403':
+          description: Admin role required
+
+  /cars/search:
+    get:
+      tags:
+        - Cars
+      summary: Search and filter cars
+      description: Search cars by name, brand, price range, color, year, and gearbox type.
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+          description: Search by car name (partial match)
+          example: "Lacetti"
+        - name: brand
+          in: query
+          schema:
+            type: string
+          description: Filter by brand ObjectId
+        - name: min_price
+          in: query
+          schema:
+            type: number
+          description: Minimum price
+        - name: max_price
+          in: query
+          schema:
+            type: number
+          description: Maximum price
+        - name: color
+          in: query
+          schema:
+            type: string
+          description: Filter by color (partial match)
+        - name: year
+          in: query
+          schema:
+            type: integer
+          description: Filter by manufacturing year
+        - name: gearbox
+          in: query
+          schema:
+            type: string
+            enum: ["Automatic", "Manual", "CVT", "Semi-automatic"]
+          description: Filter by gearbox type
+      responses:
+        '200':
+          description: List of matching cars
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  count:
+                    type: integer
+                    example: 3
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Car'
+
+  /cars/brand/{brandId}:
+    get:
+      tags:
+        - Cars
+      summary: Get cars by brand
+      parameters:
+        - name: brandId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Brand ObjectId
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 8
+      responses:
+        '200':
+          description: List of cars belonging to the brand
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  brand:
+                    $ref: '#/components/schemas/Brand'
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Car'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '404':
+          description: Brand not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /cars/{id}:
+    get:
+      tags:
+        - Cars
+      summary: Get a single car
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Car details (with populated brand)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/Car'
+        '404':
+          description: Car not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    put:
+      tags:
+        - Cars
+      summary: Update a car listing (admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                brand:
+                  type: string
+                  description: Brand ObjectId
+                name:
+                  type: string
+                registration:
+                  type: string
+                  enum: ["No", "Yes"]
+                engine:
+                  type: number
+                year:
+                  type: integer
+                color:
+                  type: string
+                mileage:
+                  type: integer
+                gearbox:
+                  type: string
+                  enum: ["Automatic", "Manual", "CVT", "Semi-automatic"]
+                price:
+                  type: number
+                description:
+                  type: string
+                exterior_image:
+                  type: string
+                  format: binary
+                  description: New 360° exterior image (optional)
+                interior_image:
+                  type: string
+                  format: binary
+                  description: New 360° interior image (optional)
+                thumbnail:
+                  type: string
+                  format: binary
+                  description: New thumbnail image (optional)
+      responses:
+        '200':
+          description: Car updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Car updated successfully"
+        '404':
+          description: Car or brand not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Token missing or invalid
+        '403':
+          description: Admin role required
+
+    delete:
+      tags:
+        - Cars
+      summary: Delete a car listing (admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Car deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Car deleted successfully"
+        '404':
+          description: Car not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Token missing or invalid
+        '403':
+          description: Admin role required
